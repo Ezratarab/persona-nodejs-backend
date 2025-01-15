@@ -1,0 +1,151 @@
+const userService = require("../services/userService");
+const jwt = require("jsonwebtoken");
+const client = require("../server");
+
+const simple = (req, res) => {
+  res.send("Hello from node js");
+};
+
+const signup = async (req, res) => {
+  try {
+    const { username, email, password, birthday } = req.body;
+    const userData = {
+      username: username,
+      email: email,
+      password: password,
+      birthday: birthday,
+    };
+    console.log(userData);
+    const newUser = await userService.signup(userData);
+    res.status(201).json({ message: "User added successfully", user: newUser });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+const getAll = async () => {
+  try {
+    // Fetch all keys using the new Redis v4 API
+    const keys = await client.keys("*");
+
+    if (keys.length > 0) {
+      // Fetch all values for the keys
+      const values = await client.mGet(keys);
+
+      const allData = keys.map((key, index) => ({
+        key,
+        value: values[index],
+      }));
+
+      return allData;
+    } else {
+      return []; // Return empty array if no keys are found
+    }
+  } catch (err) {
+    throw new Error("Error fetching data from Redis: " + err);
+  }
+};
+
+const addPostToUser = async (req, res) => {
+  const userId = req.params.userId;
+  const { photos, description } = req.body;
+
+  try {
+    const post = await userService.addPostToUser(userId, photos, description);
+    res.status(201).json({
+      message: "Post created and added to user successfully!",
+      post,
+    });
+  } catch (error) {
+    console.error("Error in controller:", error);
+    res.status(500).json({ message: "Failed to add post", error });
+  }
+};
+
+const allUsers = async (req, res) => {
+  try {
+    const users = await userService.getAll();
+    res.status(200).json({ message: "users:", users: users });
+  } catch (error) {
+    console.error("Error in controller:", error);
+    res.status(500).json({ message: "Failed to get users", error });
+  }
+};
+
+const login = async (req, res) => {
+  try {
+    const username = req.body.username;
+    const password = req.body.password;
+
+    if (!username || !password) {
+      return res
+        .status(400)
+        .json({ message: "Username and password are required" });
+    }
+
+    const { accessToken, refreshToken } = await userService.login(
+      username,
+      password
+    );
+
+    res.status(200).json({
+      message: "Login successful",
+      accessToken,
+      refreshToken,
+    });
+  } catch (error) {
+    console.error("Error during login:", error);
+    res.status(500).json({ message: "An error occurred during login" });
+  }
+};
+
+const authenticateAccessToken = async (req, res, next) => {
+  try {
+    const authHeader = req.headers["authorization"];
+    const accessToken = authHeader && authHeader.split(" ")[1];
+    if (!accessToken) {
+      return res.status(400).json({ message: "No token was given" });
+    }
+    const authenticatedUser = await userService.authenticateAccessToken(
+      accessToken
+    );
+    req.user = authenticatedUser;
+    next();
+  } catch (err) {
+    return res
+      .status(403)
+      .json({ message: err.message || "Authentication failed" });
+  }
+};
+
+const refreshUserToken = async (req, res) => {
+  try {
+    const authHeader = req.headers["authorization"];
+    const refreshToken = authHeader && authHeader.split(" ")[1];
+    if (!refreshToken) {
+      return res.status(400).json({ message: "No token was given" });
+    }
+    const { accessToken, newRefreshToken } = await userService.refreshToken(
+      refreshToken
+    );
+    return res.status(200).json({
+      message: "refreshed successfully",
+      accessToken,
+      newRefreshToken,
+    });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ message: err.message || "faild to refresh token" });
+  }
+};
+
+module.exports = {
+  simple,
+  signup,
+  addPostToUser,
+  allUsers,
+  login,
+  authenticateAccessToken,
+  getAll,
+  refreshUserToken,
+};
