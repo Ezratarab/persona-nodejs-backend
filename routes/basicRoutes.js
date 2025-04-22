@@ -1,8 +1,10 @@
 const express = require("express");
 const router = express.Router();
-const userController = require("../controllers/controller");
+const UserController = require("../controllers/controller");
 const multer = require("multer");
 const uploadText = multer();
+
+const userController = new UserController(); 
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -17,10 +19,8 @@ const storage = multer.diskStorage({
   },
 });
 const uploadFile = multer({ storage: storage });
-router.get("/getall", userController.getAll);
-router.post("/signup", uploadText.none(), userController.signup);
-router.get("/", userController.simple);
-router.get("/users", userController.allUsers);
-router.get("/aa", userController.authenticateAccessToken);
-router.post("/login", uploadText.none(), userController.login);
+router.get("/getall", userController.getAll.bind(userController));
+router.post("/signup", uploadText.none(), userController.signup.bind(userController));
+router.get("/aa", userController.authenticateAccessToken.bind(userController));
+router.post('/login', uploadText.none(), userController.login.bind(userController));
 module.exports = router;
