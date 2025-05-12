@@ -1,17 +1,48 @@
-const redisClient = require("../server"); 
+const redisClient = require("../server");
 const UserService = require("../services/userService");
 
 class UserController {
-
   constructor() {
-    this.userService = new UserService(redisClient); 
+    this.userService = new UserService(redisClient);
   }
 
   async signup(req, res) {
     try {
-      const { username, email, password, birthday } = req.body;
-      const userData = { username, email, password, birthday };
-      console.log(userData);
+      const {
+        username,
+        email,
+        password,
+        birthday,
+        bio,
+        unit,
+        team,
+        releaseDay,
+        role,
+        gender,
+      } = req.body;
+  
+      let profilePhoto;
+      if (req.file) {
+        const mimeType = req.file.mimetype; // e.g., 'image/jpeg'
+        const base64 = req.file.buffer.toString("base64");
+        profilePhoto = `data:${mimeType};base64,${base64}`;
+      }
+  
+      const userData = {
+        username,
+        email,
+        password,
+        birthday,
+        bio,
+        unit,
+        team,
+        releaseDay,
+        role,
+        gender,
+        profilePhoto,
+      };
+  
+      console.log("Saving user:", userData);
       const newUser = await this.userService.signup(userData);
       res.status(201).json({ message: "User added successfully", user: newUser });
     } catch (error) {
@@ -19,6 +50,7 @@ class UserController {
     }
   }
   
+
   async getAll(req, res) {
     try {
       const users = await this.userService.getAll();
@@ -28,12 +60,25 @@ class UserController {
       res.status(500).json({ message: "Failed to get users", error });
     }
   }
-  
+  async getUser(req, res) {
+    try {
+      let { username } = req.params;
+      const user = await this.userService.getUser(username);
+      res.status(200).json({ message: "User fetched successfully", user });
+    } catch (error) {
+      console.error("Error in controller:", error);
+      res.status(500).json({ message: "Failed to get user", error });
+    }
+  }
+
   async addPostToUser(req, res) {
     try {
       const userId = req.params.userId;
       const { photos, description } = req.body;
-      const post = await this.userService.addPostToUser(userId, { photos, description });
+      const post = await this.userService.addPostToUser(userId, {
+        photos,
+        description,
+      });
       res.status(201).json({
         message: "Post created and added to user successfully!",
         post,
@@ -48,15 +93,24 @@ class UserController {
     try {
       const { username, password } = req.body;
       if (!username || !password) {
-        return res.status(400).json({ message: "Username and password are required" });
+        return res
+          .status(400)
+          .json({ message: "Username and password are required" });
       }
-      const { accessToken, refreshToken } = await this.userService.login(username, password);
+      const { accessToken, refreshToken } = await this.userService.login(
+        username,
+        password
+      );
       console.log({ accessToken, refreshToken });
 
-      res.status(200).json({ message: "Login successful", accessToken, refreshToken });
+      res
+        .status(200)
+        .json({ message: "Login successful", accessToken, refreshToken });
     } catch (error) {
       console.error("Error during login:", error.message);
-      res.status(error.statusCode || 500).json({ message: error.message || "An error occurred during login" });
+      res
+        .status(error.statusCode || 500)
+        .json({ message: error.message || "An error occurred during login" });
     }
   }
 
@@ -70,7 +124,9 @@ class UserController {
       req.user = await this.userService.authenticateAccessToken(accessToken);
       next();
     } catch (err) {
-      return res.status(403).json({ message: err.message || "Authentication failed" });
+      return res
+        .status(403)
+        .json({ message: err.message || "Authentication failed" });
     }
   }
 
@@ -81,14 +137,17 @@ class UserController {
       if (!refreshToken) {
         return res.status(400).json({ message: "No token was given" });
       }
-      const { newAccessToken, newRefreshToken } = await this.userService.refreshToken(refreshToken);
+      const { newAccessToken, newRefreshToken } =
+        await this.userService.refreshToken(refreshToken);
       res.status(200).json({
         message: "Refreshed successfully",
         accessToken: newAccessToken,
         refreshToken: newRefreshToken,
       });
     } catch (error) {
-      res.status(500).json({ message: error.message || "Failed to refresh token" });
+      res
+        .status(500)
+        .json({ message: error.message || "Failed to refresh token" });
     }
   }
 }

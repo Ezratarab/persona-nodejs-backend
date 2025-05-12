@@ -1,4 +1,4 @@
-//to restart redis-server, open wsl in termoval and write command "redis-server" it should work
+//to restart redis-server, open wsl in terminal and write command "redis-server" it should work
 
 const redis = require("redis");
 const client = redis.createClient();

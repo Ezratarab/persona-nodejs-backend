@@ -59,6 +59,26 @@ const userSchema = new Schema({
       message: "You must be at least 18 years old to register.",
     },
   },
+  unit: {
+    type: String,
+    required: false,
+  },
+  team: {
+    type: String,
+    required: false,
+  },
+  releaseDay: {
+    type: Date,
+    required: false,
+  },
+  role: {
+    type: String,
+    required: false,
+  },
+  gender: {
+    type: String,
+    required: false,
+  },
   posts: [
     {
       type: mongoose.Schema.Types.ObjectId,

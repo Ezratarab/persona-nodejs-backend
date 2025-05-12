@@ -8,7 +8,7 @@ require("dotenv").config();
 
 class UserService {
   constructor(redisClient) {
-    this.client = redisClient || redis.createClient(); // Inject Redis for flexibility
+    this.client = redisClient || redis.createClient();
   }
 
   async simple(req, res) {
@@ -81,8 +81,16 @@ class UserService {
 
   async logout(accessToken, refreshToken) {
     try {
-      const decodedAccess = jwt.verify(accessToken, process.env.ACCESS_TOKEN_SECRET, { ignoreExpiration: true });
-      const decodedRefresh = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET, { ignoreExpiration: true });
+      const decodedAccess = jwt.verify(
+        accessToken,
+        process.env.ACCESS_TOKEN_SECRET,
+        { ignoreExpiration: true }
+      );
+      const decodedRefresh = jwt.verify(
+        refreshToken,
+        process.env.REFRESH_TOKEN_SECRET,
+        { ignoreExpiration: true }
+      );
       await this.addToBlacklist(decodedAccess.jti, decodedAccess.exp);
       await this.addToBlacklist(decodedRefresh.jti, decodedRefresh.exp);
       return { message: "Logged out successfully" };
@@ -92,28 +100,37 @@ class UserService {
   }
 
   generateAccessToken(userData) {
-    return jwt.sign(userData, process.env.ACCESS_TOKEN_SECRET, { expiresIn: "30m" });
+    return jwt.sign(userData, process.env.ACCESS_TOKEN_SECRET, {
+      expiresIn: "30m",
+    });
   }
 
   generateRefreshToken(userData) {
-    return jwt.sign(userData, process.env.REFRESH_TOKEN_SECRET, { expiresIn: "1d" });
+    return jwt.sign(userData, process.env.REFRESH_TOKEN_SECRET, {
+      expiresIn: "1d",
+    });
   }
 
   async isTokenRevoked(jti) {
     return new Promise((resolve, reject) => {
-      this.client.get(jti, (err, reply) => (err ? reject(err) : resolve(reply === "revoked")));
+      this.client.get(jti, (err, reply) =>
+        err ? reject(err) : resolve(reply === "revoked")
+      );
     });
   }
 
   async checkBlacklist(token) {
-    if (await this.isTokenRevoked(token.jti)) throw new Error("Token has been revoked");
+    if (await this.isTokenRevoked(token.jti))
+      throw new Error("Token has been revoked");
   }
 
   async authenticateAccessToken(token) {
     try {
       const decodedToken = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
       await this.checkBlacklist(decodedToken);
-      const authenticatedUser = await User.findOne({ username: decodedToken.name });
+      const authenticatedUser = await User.findOne({
+        username: decodedToken.name,
+      });
       if (!authenticatedUser) throw new Error("User not found");
       return authenticatedUser;
     } catch (error) {
@@ -127,7 +144,10 @@ class UserService {
 
   async refreshToken(refreshToken) {
     try {
-      const decodedToken = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+      const decodedToken = jwt.verify(
+        refreshToken,
+        process.env.REFRESH_TOKEN_SECRET
+      );
       await this.authenticateRefreshToken(decodedToken);
       await this.addToBlacklist(decodedToken.jti, decodedToken.exp);
       const user = await User.findOne({ username: decodedToken.name });
@@ -139,6 +159,16 @@ class UserService {
       };
     } catch (error) {
       throw new Error(error.message || "Invalid token");
+    }
+  }
+  async getUser(username) {
+    try {
+      const user = await User.findOne({ username: username });
+      console.log("User photo:", user.profilePhoto);
+
+      return user;
+    } catch (error) {
+      throw new Error(error.message || "Didnt found user");
     }
   }
 }
