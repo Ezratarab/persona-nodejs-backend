@@ -119,15 +119,19 @@ class UserService {
     });
   }
 
-  async checkBlacklist(token) {
+  async checkBlacklistForRefreshToken(token) {
     if (await this.isTokenRevoked(token.jti))
       throw new Error("Token has been revoked");
+  }
+  async checkBlacklistForAccessToken(token) {
+    if (await this.isTokenRevoked(token.jti))
+      throw new Error(process.env.ACCESS_TOKEN_EXPIRED_ERROR);
   }
 
   async authenticateAccessToken(token) {
     try {
       const decodedToken = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
-      await this.checkBlacklist(decodedToken);
+      await this.checkBlacklistForAccessToken(decodedToken);
       const authenticatedUser = await User.findOne({
         username: decodedToken.name,
       });
@@ -139,7 +143,7 @@ class UserService {
   }
 
   async authenticateRefreshToken(token) {
-    await this.checkBlacklist(token);
+    await this.checkBlacklistForRefreshToken(token);
   }
 
   async refreshToken(refreshToken) {
@@ -148,19 +152,34 @@ class UserService {
         refreshToken,
         process.env.REFRESH_TOKEN_SECRET
       );
-      await this.authenticateRefreshToken(decodedToken);
+  
+      await this.authenticateRefreshToken(decodedToken); 
+  
+      const cooldownKey = `cooldown:${decodedToken.jti}`;
+      const lastRefresh = await this.client.get(cooldownKey);
+  
+      const now = Date.now();
+      const cooldownTime = process.env.REFRESH_COOLDOWN_MS;
+  
+      if (lastRefresh && now - parseInt(lastRefresh) < cooldownTime) {
+        throw new Error("Refresh token called too frequently. Try again later.");
+      }
+      await this.client.set(cooldownKey, now.toString(), 'EX', cooldownTime / 1000);  
       await this.addToBlacklist(decodedToken.jti, decodedToken.exp);
       const user = await User.findOne({ username: decodedToken.name });
       if (!user) throw new Error("User not found");
+  
       const tokenPayload = this.buildTokenPayload(user);
       return {
-        newRefreshToken: this.generateRefreshToken(tokenPayload),
         newAccessToken: this.generateAccessToken(tokenPayload),
+        newRefreshToken: this.generateRefreshToken(tokenPayload),
       };
     } catch (error) {
       throw new Error(error.message || "Invalid token");
     }
   }
+  
+  
   async getUser(username) {
     try {
       const user = await User.findOne({ username: username });
