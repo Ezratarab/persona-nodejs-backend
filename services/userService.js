@@ -8,7 +8,12 @@ require("dotenv").config();
 
 class UserService {
   constructor(redisClient) {
-    this.client = redisClient || redis.createClient();
+    this.client = redisClient;
+    if (this.client && this.client.isOpen !== undefined) {
+      console.log("✅ [UserService] Redis client is open:", this.client.isOpen);
+    } else {
+      console.log("❌ [UserService] Redis client is undefined or not ready!");
+    }
   }
 
   async simple(req, res) {
@@ -77,6 +82,7 @@ class UserService {
   async addToBlacklist(jti, exp) {
     const ttl = exp - Math.floor(Date.now() / 1000);
     if (ttl > 0) await this.client.set(jti, "revoked", { EX: ttl });
+    console.log("ADDED TO BLACKLIST");
   }
 
   async logout(accessToken, refreshToken) {
@@ -91,6 +97,7 @@ class UserService {
         process.env.REFRESH_TOKEN_SECRET,
         { ignoreExpiration: true }
       );
+      console.log("ADDED TOKENS TO BLACKLIST");
       await this.addToBlacklist(decodedAccess.jti, decodedAccess.exp);
       await this.addToBlacklist(decodedRefresh.jti, decodedRefresh.exp);
       return { message: "Logged out successfully" };
@@ -112,11 +119,13 @@ class UserService {
   }
 
   async isTokenRevoked(jti) {
-    return new Promise((resolve, reject) => {
-      this.client.get(jti, (err, reply) =>
-        err ? reject(err) : resolve(reply === "revoked")
-      );
-    });
+    try {
+      console.log("isTokenRevoked jti:", jti, "type:", typeof jti);
+      const value = await this.client.get(jti);
+      return value === "revoked";
+    } catch (err) {
+      throw err;
+    }
   }
 
   async checkBlacklistForRefreshToken(token) {
@@ -132,10 +141,13 @@ class UserService {
     try {
       const decodedToken = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
       await this.checkBlacklistForAccessToken(decodedToken);
+
       const authenticatedUser = await User.findOne({
         username: decodedToken.name,
       });
+
       if (!authenticatedUser) throw new Error("User not found");
+      console.log("all ok------------");
       return authenticatedUser;
     } catch (error) {
       throw new Error(error.message || "Invalid token");
@@ -143,33 +155,49 @@ class UserService {
   }
 
   async authenticateRefreshToken(token) {
-    await this.checkBlacklistForRefreshToken(token);
+    try {
+      const decodedToken = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
+      console.log("decoded:", decodedToken);
+      await this.checkBlacklistForRefreshToken(decodedToken);
+      const authenticatedUser = await User.findOne({
+        username: decodedToken.name,
+      });
+      if (!authenticatedUser) throw new Error("User not found");
+      return { authenticatedUser, decodedToken };
+    } catch (error) {
+      throw new Error(error.message || "Invalid token");
+    }
   }
 
   async refreshToken(refreshToken) {
     try {
-      const decodedToken = jwt.verify(
-        refreshToken,
-        process.env.REFRESH_TOKEN_SECRET
-      );
-  
-      await this.authenticateRefreshToken(decodedToken); 
-  
+      const { authenticatedUser, decodedToken } =
+        await this.authenticateRefreshToken(refreshToken);
+
       const cooldownKey = `cooldown:${decodedToken.jti}`;
       const lastRefresh = await this.client.get(cooldownKey);
-  
+
       const now = Date.now();
-      const cooldownTime = process.env.REFRESH_COOLDOWN_MS;
-  
-      if (lastRefresh && now - parseInt(lastRefresh) < cooldownTime) {
-        throw new Error("Refresh token called too frequently. Try again later.");
+      const cooldownTime = parseInt(process.env.REFRESH_COOLDOWN_MS, 10);
+      if (isNaN(cooldownTime)) {
+        throw new Error("Invalid cooldown time in environment variable");
       }
-      await this.client.set(cooldownKey, now.toString(), 'EX', cooldownTime / 1000);  
+      if (lastRefresh && now - parseInt(lastRefresh) < cooldownTime) {
+        throw new Error(
+          "Refresh token called too frequently. Try again later."
+        );
+      }
+
+      await this.client.set(cooldownKey, now.toString(), {
+        EX: Math.max(1, Math.floor(cooldownTime / 1000)),
+      });
+      console.log("ADDED PREVIOS REFRESH-TOKEN TO BLACKLIST: ", refreshToken);
       await this.addToBlacklist(decodedToken.jti, decodedToken.exp);
-      const user = await User.findOne({ username: decodedToken.name });
-      if (!user) throw new Error("User not found");
-  
-      const tokenPayload = this.buildTokenPayload(user);
+
+      const tokenPayload = this.buildTokenPayload(authenticatedUser);
+      const newAccessToken = this.generateAccessToken(tokenPayload);
+      const newRefreshToken = this.generateRefreshToken(tokenPayload);
+      console.log("NEW REFRESH-TOKEN: ", newRefreshToken);
       return {
         newAccessToken: this.generateAccessToken(tokenPayload),
         newRefreshToken: this.generateRefreshToken(tokenPayload),
@@ -178,13 +206,11 @@ class UserService {
       throw new Error(error.message || "Invalid token");
     }
   }
-  
-  
+
   async getUser(username) {
     try {
       const user = await User.findOne({ username: username });
-      console.log("User photo:", user.profilePhoto);
-
+      console.log("User", user);
       return user;
     } catch (error) {
       throw new Error(error.message || "Didnt found user");

@@ -1,9 +1,18 @@
-const redisClient = require("../server");
 const UserService = require("../services/userService");
 
 class UserController {
-  constructor() {
+  constructor(redisClient) {
     this.userService = new UserService(redisClient);
+    if (redisClient && redisClient.isOpen !== undefined) {
+      console.log(
+        "✅ [UserController] Redis client is open:",
+        redisClient.isOpen
+      );
+    } else {
+      console.log(
+        "❌ [UserController] Redis client is undefined or not ready!"
+      );
+    }
   }
 
   async signup(req, res) {
@@ -54,10 +63,13 @@ class UserController {
   async getUser(req, res) {
     try {
       let { username } = req.params;
+      console.log("trying to get user: ", username);
       const user = await this.userService.getUser(username);
+      console.log("200 user");
       res.status(200).json({ message: "User fetched successfully", user });
     } catch (error) {
       console.error("Error in controller:", error);
+      console.log("500 user");
       res.status(500).json({ message: "Failed to get user", error });
     }
   }
@@ -79,7 +91,18 @@ class UserController {
       res.status(500).json({ message: "Failed to add post", error });
     }
   }
-
+  setRefreshTokenCookie(res, refreshToken) {
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: false,
+      sameSite: "Strict",
+      path: "/user",
+    });
+  }
+  setAccessToken(res, accessToken) {
+    res.setHeader("Authorization", `Bearer ${accessToken}`);
+    res.setHeader("Access-Control-Expose-Headers", "Authorization");
+  }
   async login(req, res) {
     try {
       const { username, password } = req.body;
@@ -92,16 +115,12 @@ class UserController {
         username,
         password
       );
+      console.log("User connected: ", username);
       console.log({ accessToken, refreshToken });
-      res.cookie("refreshToken", refreshToken, {
-        httpOnly: true,
-        secure: false,
-        sameSite: "None",
-        path: "/",
-        maxAge: 1 * 24 * 60 * 60 * 1000,
-      });
+      this.setAccessToken(res, accessToken);
+      this.setRefreshTokenCookie(res, refreshToken);
 
-      res.status(200).json({ message: "Login successful", accessToken });
+      res.status(200).json({ message: "Login successful" });
     } catch (error) {
       console.error("Error during login:", error.message);
       res
@@ -112,62 +131,59 @@ class UserController {
 
   async authenticateAccessToken(req, res, next) {
     try {
+      console.log("**********************************************");
+      console.log("AUTHENTICATION STARTED...", req.method, req.originalUrl);
       const authHeader = req.headers["authorization"];
       const accessToken = authHeader && authHeader.split(" ")[1];
-
+      console.log("GOT ACCESS TOKEN: ", accessToken);
       if (!accessToken) {
         return res.status(400).json({ message: "No token was given" });
       }
       req.user = await this.userService.authenticateAccessToken(accessToken);
+      console.log("DONE AUTHENTICATION!");
+      console.log("**********************************************");
       next();
     } catch (err) {
+      console.log("GOT ERROR DURING AUTHENTICATION: ", err.message);
       if (err.message === process.env.ACCESS_TOKEN_EXPIRED_ERROR) {
-        const refreshResult = await this.refreshUserToken(req, res);
-
-        if (refreshResult.error) {
-          return res.status(403).json({
-            message: refreshResult.error || "Failed to refresh token",
-          });
-        }
-
-        const { newAccessToken, newRefreshToken } = refreshResult;
+        const { newAccessToken, newRefreshToken } = await this.refreshUserToken(
+          req
+        );
 
         res.setHeader("Authorization", `Bearer ${newAccessToken}`);
+        res.setHeader("Access-Control-Expose-Headers", "Authorization");
 
-        res.cookie("refreshToken", newRefreshToken, {
-          httpOnly: true,
-          secure: false,
-          sameSite: "Strict",
-        });
+        this.setRefreshTokenCookie(res, newRefreshToken);
 
         req.user = await this.userService.authenticateAccessToken(
           newAccessToken
         );
-
-        next();
+        console.log("NEW ACCESS-TOKEN: ", newAccessToken);
+        return next();
       }
+
       return res
         .status(403)
         .json({ message: err.message || "Authentication failed" });
     }
   }
 
-  async refreshUserToken(req, res) {
-    try {
-      const refreshToken = req.cookies.refreshToken;
-      if (!refreshToken) {
-        return res.status(400).json({ message: "No refresh token provided" });
-      }
-
-      const { newAccessToken, newRefreshToken } =
-        await this.userService.refreshToken(refreshToken);
-
-      return { newAccessToken, newRefreshToken };
-    } catch (error) {
-      res.status(403).json({
-        message: error.message || "Failed to refresh token",
-      });
+  async refreshUserToken(req) {
+    console.log("controller refresh");
+    const refreshToken = req.cookies.refreshToken;
+    console.log("refresh: ", refreshToken);
+    if (!refreshToken) {
+      throw new Error("No refresh token provided");
     }
+
+    const { newAccessToken, newRefreshToken } =
+      await this.userService.refreshToken(refreshToken);
+    return { newAccessToken, newRefreshToken };
+  }
+  catch(error) {
+    res.status(403).json({
+      message: error.message || "Failed to refresh token",
+    });
   }
 }
 

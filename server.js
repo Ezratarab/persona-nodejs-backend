@@ -2,13 +2,14 @@ const express = require("express");
 const { connectDB } = require("./DBServers/mongoDB.js");
 const routes = require("./routes/basicRoutes.js");
 const cors = require("cors");
-const client = require("./DBServers/redis.js");
-const UserController = require("./controllers/controller"); // Import the class first
+const { getRedisClient } = require("./DBServers/redis");
+const UserController = require("./controllers/controller");
+const cookieParser = require("cookie-parser");
+
 const app = express();
 const port = 9000;
-const cookieParser = require('cookie-parser');
-app.use(cookieParser());
 
+app.use(cookieParser());
 app.use(express.json());
 app.use(
   cors({
@@ -18,18 +19,41 @@ app.use(
   })
 );
 app.use(express.static("public"));
-app.use("/user", routes);
 
-const userController = new UserController(); 
-app.use(userController.authenticateAccessToken);
+async function startServer() {
+  try {
+    const client = await getRedisClient();
+    const userController = new UserController(client);
+    const userRoutes = routes(userController);
+    app.use("/user", userRoutes);
 
-connectDB().then(() => {
-  app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
-  });
-});
+    await connectDB();
 
-app.use((err, req, res, next) => {
+    app.listen(port, () => {
+      console.log(`Server running on port ${port}`);
+    });
+  } catch (error) {
+    console.error("Failed to start server:", error);
+    process.exit(1);
+  }
+}
+
+startServer();
+
+app.use(async (err, req, res, next) => {
   console.error(err.stack);
-  res.status(err.statusCode || 500).json({ message: err.message });
+  const openPaths = ["/user/login", "/user/signup"];
+
+  if (openPaths.includes(req.path)) {
+    return next();
+  }
+  try {
+    await userController.authenticateAccessToken(req, res, next);
+  } catch (authError) {}
+
+  if (!res.headersSent) {
+    return res
+      .status(err.statusCode || 500)
+      .json({ message: err.message || "Internal server error" });
+  }
 });

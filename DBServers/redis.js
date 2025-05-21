@@ -1,22 +1,26 @@
-//to restart redis-server, open wsl in terminal and write command "redis-server" it should work
-
 const redis = require("redis");
-const client = redis.createClient();
-client
-  .connect()
-  .then(() => console.log("Connected to Redis!"))
-  .catch((error) => {
-    console.error("Redis connection failed:", error);
-    process.exit(1);
-  });
 
-client.on("connect", async () => {
-  try {
+let client;
+let isConnecting = false;
+
+async function getRedisClient() {
+  if (client && client.isOpen) return client;
+
+  if (!isConnecting) {
+    isConnecting = true;
+    client = redis.createClient();
+
+    client.on("error", (err) => {
+      console.error("❌ Redis client error:", err);
+    });
+
+    await client.connect();
+    console.log("✅ Connected to Redis!");
     await client.set("key", "value");
-    console.log("Key set in Redis");
-  } catch (err) {
-    console.error("Error setting key:", err);
+    console.log("🗝️ Key 'key' set to 'value' in Redis");
   }
-});
 
-module.exports = client; 
+  return client;
+}
+
+module.exports = { getRedisClient };
