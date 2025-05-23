@@ -134,7 +134,7 @@ class UserService {
   }
   async checkBlacklistForAccessToken(token) {
     if (await this.isTokenRevoked(token.jti))
-      throw new Error(process.env.ACCESS_TOKEN_EXPIRED_ERROR);
+      throw new Error(process.env.TOKEN_EXPIRED_ERROR);
   }
 
   async authenticateAccessToken(token) {
@@ -171,8 +171,10 @@ class UserService {
 
   async refreshToken(refreshToken) {
     try {
+      console.log("\nTrying to authenticate refresh token..\n");
       const { authenticatedUser, decodedToken } =
         await this.authenticateRefreshToken(refreshToken);
+      console.log("refresh token still valid :)");
 
       const cooldownKey = `cooldown:${decodedToken.jti}`;
       const lastRefresh = await this.client.get(cooldownKey);

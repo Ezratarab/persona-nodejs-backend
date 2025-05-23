@@ -145,7 +145,7 @@ class UserController {
       next();
     } catch (err) {
       console.log("GOT ERROR DURING AUTHENTICATION: ", err.message);
-      if (err.message === process.env.ACCESS_TOKEN_EXPIRED_ERROR) {
+      if (err.message === process.env.TOKEN_EXPIRED_ERROR) {
         const { newAccessToken, newRefreshToken } = await this.refreshUserToken(
           req
         );
@@ -181,6 +181,9 @@ class UserController {
     return { newAccessToken, newRefreshToken };
   }
   catch(error) {
+    if (error.message === process.env.TOKEN_EXPIRED_ERROR) {
+      error.message = REFRESH_TOKEN_EXPIRED;
+    }
     res.status(403).json({
       message: error.message || "Failed to refresh token",
     });
