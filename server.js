@@ -40,20 +40,9 @@ async function startServer() {
 
 startServer();
 
-app.use(async (err, req, res, next) => {
+app.use((err, req, res, next) => {
   console.error(err.stack);
-  const openPaths = ["/user/login", "/user/signup"];
-
-  if (openPaths.includes(req.path)) {
-    return next();
-  }
-  try {
-    await userController.authenticateAccessToken(req, res, next);
-  } catch (authError) {}
-
-  if (!res.headersSent) {
-    return res
-      .status(err.statusCode || 500)
-      .json({ message: err.message || "Internal server error" });
-  }
+  res.status(err.statusCode || 500).json({
+    message: err.message || "Internal server error",
+  });
 });

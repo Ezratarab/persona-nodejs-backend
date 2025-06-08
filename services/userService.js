@@ -43,14 +43,82 @@ class UserService {
     }
   }
 
-  async addPostToUser(userId, postDetails) {
+  async addPostToUser(postData) {
     try {
-      const newPost = await Post.create({ ...postDetails, author: userId });
-      await User.findByIdAndUpdate(userId, { $push: { posts: newPost._id } });
+      const newPost = await Post.create(postData);
+      await User.findByIdAndUpdate(postData.author._id, {
+        $push: { posts: newPost._id },
+      });
       return newPost;
     } catch (err) {
       console.error("Error adding post to user:", err);
       throw err;
+    }
+  }
+  async addLikeToPost(postId, userLiked) {
+    try {
+      const updatedPost = await Post.findByIdAndUpdate(
+        postId,
+        { $addToSet: { likes: userLiked._id } },
+        { new: true }
+      );
+      return updatedPost;
+    } catch (error) {
+      console.error("Error adding like to post:", error);
+      throw error;
+    }
+  }
+  
+  async deleteLikeFromPost(postId, userLiked) {
+    try {
+      const updatedPost = await Post.findByIdAndUpdate(
+        postId,
+        { $pull: { likes: userLiked._id } },
+        { new: true }
+      );
+      return updatedPost;
+    } catch (error) {
+      console.error("Error deleting like from post:", error);
+      throw error;
+    }
+  }
+  async addCommentToPost(postId, text, responder) {
+    try {
+      const comment = { responder, text };
+      const updatedPost = await Post.findByIdAndUpdate(
+        postId,
+        {
+          $push: {
+            comments: {
+              $each: [comment],
+              $position: 0,
+            },
+          },
+        },
+        { new: true }
+      );
+      return updatedPost;
+    } catch (error) {
+      console.error("Error adding comment to post:", error);
+      throw error;
+    }
+  }
+  async deleteCommentFromPost(postId, commentId) {
+    try {
+      const updatedPost = await Post.findByIdAndUpdate(
+        postId,
+        {
+          $pull: {
+            comments: { _id: commentId },
+          },
+        },
+        { new: true }
+      );
+
+      return updatedPost;
+    } catch (error) {
+      console.error("Error deleting comment from post:", error);
+      throw error;
     }
   }
 
@@ -98,6 +166,7 @@ class UserService {
         { ignoreExpiration: true }
       );
       console.log("ADDED TOKENS TO BLACKLIST");
+      console.log("999999999999999999999999999999999999999");
       await this.addToBlacklist(decodedAccess.jti, decodedAccess.exp);
       await this.addToBlacklist(decodedRefresh.jti, decodedRefresh.exp);
       return { message: "Logged out successfully" };
@@ -201,10 +270,11 @@ class UserService {
       const newRefreshToken = this.generateRefreshToken(tokenPayload);
       console.log("NEW REFRESH-TOKEN: ", newRefreshToken);
       return {
-        newAccessToken: this.generateAccessToken(tokenPayload),
-        newRefreshToken: this.generateRefreshToken(tokenPayload),
+        newAccessToken: newAccessToken,
+        newRefreshToken: newRefreshToken,
       };
     } catch (error) {
+      console.log(error);
       throw new Error(error.message || "Invalid token");
     }
   }

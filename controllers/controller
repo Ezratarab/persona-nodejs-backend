@@ -60,6 +60,94 @@ class UserController {
       res.status(500).json({ error: error.message });
     }
   }
+  async uploadPost(req, res) {
+    try {
+      const { username, description } = req.body;
+      const author = await this.userService.getUser(username);
+
+      let photos = [];
+      if (req.files && req.files.length > 0) {
+        photos = req.files.map((file) => {
+          const mimeType = file.mimetype;
+          const base64 = file.buffer.toString("base64");
+          return `data:${mimeType};base64,${base64}`;
+        });
+      }
+      const postData = { author, photos, description };
+      const newPost = await this.userService.addPostToUser(postData);
+      res
+        .status(201)
+        .json({ message: "post was added succesfully", post: newPost });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+  async addLikeToPost(req, res) {
+    try {
+      const { postId, usernameWhoLiked } = req.body;
+      const userLiked = await this.userService.getUser(usernameWhoLiked);
+      const updatedPost = await this.userService.addLikeToPost(
+        postId,
+        userLiked
+      );
+      res
+        .status(202)
+        .json({ message: "added like successfully", updatedPost: updatedPost });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+  async deleteLikeFromPost(req, res) {
+    try {
+      const { postId, usernameWhoDisliked } = req.body;
+      const user = await this.userService.getUser(usernameWhoDisliked);
+      const updatedPost = await this.userService.deleteLikeFromPost(
+        postId,
+        user
+      );
+      res
+        .status(202)
+        .json({
+          message: "deleted like successfully",
+          updatedPost: updatedPost,
+        });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  async addCommentToPost(req, res) {
+    try {
+      const { postId, text, responderName } = req.body;
+      const responder = this.userService.getUser(responderName);
+      const updatedPost = await this.userService.addCommentToPost(
+        postId,
+        text,
+        responder
+      );
+      res.status(201).json({
+        message: "comment added successfully",
+        updatedPost: updatedPost,
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+  async deleteCommentFromPost(req, res) {
+    try {
+      const { postId, commentId } = req.body;
+      const updatedPost = await this.userService.deleteCommentFromPost(
+        postId,
+        commentId
+      );
+      res.status(201).json({
+        message: "comment deleted successfully",
+        updatedPost: updatedPost,
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
   async getUser(req, res) {
     try {
       let { username } = req.params;
@@ -139,27 +227,36 @@ class UserController {
       if (!accessToken) {
         return res.status(400).json({ message: "No token was given" });
       }
+
       req.user = await this.userService.authenticateAccessToken(accessToken);
       console.log("DONE AUTHENTICATION!");
       console.log("**********************************************");
-      next();
+      return next();
     } catch (err) {
       console.log("GOT ERROR DURING AUTHENTICATION: ", err.message);
+
       if (err.message === process.env.TOKEN_EXPIRED_ERROR) {
-        const { newAccessToken, newRefreshToken } = await this.refreshUserToken(
-          req
-        );
+        try {
+          const { newAccessToken, newRefreshToken } =
+            await this.refreshUserToken(req, res);
 
-        res.setHeader("Authorization", `Bearer ${newAccessToken}`);
-        res.setHeader("Access-Control-Expose-Headers", "Authorization");
+          res.setHeader("Authorization", `Bearer ${newAccessToken}`);
+          res.setHeader("Access-Control-Expose-Headers", "Authorization");
 
-        this.setRefreshTokenCookie(res, newRefreshToken);
+          this.setRefreshTokenCookie(res, newRefreshToken);
 
-        req.user = await this.userService.authenticateAccessToken(
-          newAccessToken
-        );
-        console.log("NEW ACCESS-TOKEN: ", newAccessToken);
-        return next();
+          req.user = await this.userService.authenticateAccessToken(
+            newAccessToken
+          );
+          console.log("NEW ACCESS-TOKEN: ", newAccessToken);
+          return next();
+        } catch (refreshError) {
+          console.log("REFRESH TOKEN FAILED:", refreshError.message);
+          return res.status(403).json({
+            message:
+              refreshError.message || "Refresh failed. Please log in again.",
+          });
+        }
       }
 
       return res
@@ -167,26 +264,44 @@ class UserController {
         .json({ message: err.message || "Authentication failed" });
     }
   }
+  async logout(req, res) {
+    try {
+      const authHeader = req.headers["authorization"];
+      const accessToken = authHeader && authHeader.split(" ")[1];
+      console.log("WANT TO EXPIRE ACCESS TOKEN: ", accessToken);
+      const refreshToken = req.cookies.refreshToken;
+      console.log("WANT TO EXPIRE REFRESH TOKEN: ", refreshToken);
+      await this.userService.logout(accessToken, refreshToken);
+      res.cookie("refreshToken", " ", {
+        httpOnly: true,
+        secure: false,
+        sameSite: "Strict",
+        path: "/user",
+        expires: new Date(0),
+      });
+      res.sendStatus(204);
+    } catch (error) {
+      res.status(400).json({ message: "cannot logout" });
+    }
+  }
 
   async refreshUserToken(req) {
-    console.log("controller refresh");
-    const refreshToken = req.cookies.refreshToken;
-    console.log("refresh: ", refreshToken);
-    if (!refreshToken) {
-      throw new Error("No refresh token provided");
-    }
+    try {
+      console.log("controller refresh");
+      const refreshToken = req.cookies.refreshToken;
+      console.log("refresh: ", refreshToken);
+      if (!refreshToken) {
+        throw new Error("No refresh token provided");
+      }
 
-    const { newAccessToken, newRefreshToken } =
-      await this.userService.refreshToken(refreshToken);
-    return { newAccessToken, newRefreshToken };
-  }
-  catch(error) {
-    if (error.message === process.env.TOKEN_EXPIRED_ERROR) {
-      error.message = REFRESH_TOKEN_EXPIRED;
+      return await this.userService.refreshToken(refreshToken);
+    } catch (error) {
+      if (error.message === process.env.TOKEN_EXPIRED_ERROR) {
+        error.message = process.env.REFRESH_TOKEN_EXPIRED;
+      }
+      console.log("--------------------------------------\n", error);
+      throw error;
     }
-    res.status(403).json({
-      message: error.message || "Failed to refresh token",
-    });
   }
 }
 
