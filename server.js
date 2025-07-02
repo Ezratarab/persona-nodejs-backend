@@ -2,7 +2,7 @@ const express = require("express");
 const { connectDB } = require("./DBServers/mongoDB.js");
 const routes = require("./routes/basicRoutes.js");
 const cors = require("cors");
-const { getRedisClient } = require("./DBServers/redis");
+const { getRedisClient } = require("./DBServers/redis.js");
 const UserController = require("./controllers/controller");
 const cookieParser = require("cookie-parser");
 

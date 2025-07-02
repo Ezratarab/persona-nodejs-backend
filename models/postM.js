@@ -9,18 +9,14 @@ const postSchema = new Schema({
     required: true,
   },
   photos: {
-    type: [String],
+    type: [Buffer],
     required: true,
-    validate: {
-      validator: function (value) {
-        return value.every((photo) =>
-          /^data:image\/(jpeg|png|gif|webp);base64,/.test(photo)
-        );
-      },
-      message: "All photos must be valid base64 images.",
-    },
   },
   description: {
+    type: String,
+    required: false,
+  },
+  location: {
     type: String,
     required: false,
   },
@@ -32,7 +28,10 @@ const postSchema = new Schema({
   ],
   comments: [
     {
-       _id: { type: mongoose.Schema.Types.ObjectId, default: () => new mongoose.Types.ObjectId() },
+      _id: {
+        type: mongoose.Schema.Types.ObjectId,
+        default: () => new mongoose.Types.ObjectId(),
+      },
       user: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",

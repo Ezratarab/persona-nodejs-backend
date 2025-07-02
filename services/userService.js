@@ -46,6 +46,9 @@ class UserService {
   async addPostToUser(postData) {
     try {
       const newPost = await Post.create(postData);
+      console.log("---------NEW POST------------");
+      console.log(newPost.author.username);
+      console.log(newPost.createdAt);
       await User.findByIdAndUpdate(postData.author._id, {
         $push: { posts: newPost._id },
       });
@@ -68,7 +71,7 @@ class UserService {
       throw error;
     }
   }
-  
+
   async deleteLikeFromPost(postId, userLiked) {
     try {
       const updatedPost = await Post.findByIdAndUpdate(
@@ -281,11 +284,41 @@ class UserService {
 
   async getUser(username) {
     try {
-      const user = await User.findOne({ username: username });
-      console.log("User", user);
+      const user = await User.findOne({ username: username }).populate({
+        path: "posts",
+        select: "photos",
+      });
       return user;
     } catch (error) {
       throw new Error(error.message || "Didnt found user");
+    }
+  }
+  async getPost(postId) {
+    try {
+      const post = await Post.findById(postId)
+        .populate("author", "username profilePhoto")
+        .populate("comments.user", "username profilePhoto")
+        .lean();
+      post.photos = post.photos.map(
+        (buf) => `data:image/jpeg;base64,${buf.toString("base64")}`
+      );
+
+      return post;
+    } catch (error) {
+      throw new Error(error.message || "Didn't find post");
+    }
+  }
+
+  async getAllUser() {
+    try {
+      const users = await User.find();
+      const filteredUsers = users.map((user) => ({
+        username: user.username,
+        profilePhoto: user.profilePhoto,
+      }));
+      return filteredUsers;
+    } catch (error) {
+      throw new Error(error.message || "Didnt found users");
     }
   }
 }

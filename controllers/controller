@@ -1,4 +1,5 @@
 const UserService = require("../services/userService");
+const fs = require("fs").promises; // Use promise-based fs
 
 class UserController {
   constructor(redisClient) {
@@ -60,28 +61,40 @@ class UserController {
       res.status(500).json({ error: error.message });
     }
   }
+
   async uploadPost(req, res) {
     try {
-      const { username, description } = req.body;
+      const { username, description, location } = req.body;
       const author = await this.userService.getUser(username);
 
-      let photos = [];
-      if (req.files && req.files.length > 0) {
-        photos = req.files.map((file) => {
-          const mimeType = file.mimetype;
-          const base64 = file.buffer.toString("base64");
-          return `data:${mimeType};base64,${base64}`;
-        });
-      }
-      const postData = { author, photos, description };
+      // Convert each uploaded file to base64 string
+      const photos = await Promise.all(
+        (req.files || []).map(async (file) => {
+          const fileData = await fs.readFile(file.path); // Read from disk
+          const base64 = fileData.toString("base64");
+          return `data:${file.mimetype};base64,${base64}`;
+        })
+      );
+
+      const postData = {
+        author,
+        photos,
+        description,
+        location,
+      };
+
       const newPost = await this.userService.addPostToUser(postData);
-      res
-        .status(201)
-        .json({ message: "post was added succesfully", post: newPost });
+
+      res.status(201).json({
+        message: "Post was added successfully",
+        post: newPost,
+      });
     } catch (error) {
+      console.error("uploadPost error:", error);
       res.status(500).json({ error: error.message });
     }
   }
+
   async addLikeToPost(req, res) {
     try {
       const { postId, usernameWhoLiked } = req.body;
@@ -105,12 +118,10 @@ class UserController {
         postId,
         user
       );
-      res
-        .status(202)
-        .json({
-          message: "deleted like successfully",
-          updatedPost: updatedPost,
-        });
+      res.status(202).json({
+        message: "deleted like successfully",
+        updatedPost: updatedPost,
+      });
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
@@ -161,7 +172,16 @@ class UserController {
       res.status(500).json({ message: "Failed to get user", error });
     }
   }
-
+  async getAllUsers(req, res) {
+    try {
+      const users = await this.userService.getAllUser();
+      res.status(200).json({ message: "Users fetched successfully", users });
+    } catch (error) {
+      console.error("Error in controller:", error);
+      console.log("500 users");
+      res.status(500).json({ message: "Failed to get users", error });
+    }
+  }
   async addPostToUser(req, res) {
     try {
       const userId = req.user.id;
@@ -177,6 +197,19 @@ class UserController {
     } catch (error) {
       console.error("Error in controller:", error);
       res.status(500).json({ message: "Failed to add post", error });
+    }
+  }
+  async getPost(req, res) {
+    try {
+      let { postId } = req.params;
+      console.log("trying to get post: ", postId);
+      const post = await this.userService.getPost(postId);
+      console.log("200 post");
+      res.status(200).json({ message: "post fetched successfully", post });
+    } catch (error) {
+      console.error("Error in controller:", error);
+      console.log("500 post");
+      res.status(500).json({ message: "Failed to get post", error });
     }
   }
   setRefreshTokenCookie(res, refreshToken) {
