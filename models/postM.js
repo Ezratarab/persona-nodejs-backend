@@ -9,7 +9,7 @@ const postSchema = new Schema({
     required: true,
   },
   photos: {
-    type: [Buffer],
+    type: [String],
     required: true,
   },
   description: {

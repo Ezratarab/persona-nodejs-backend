@@ -61,20 +61,11 @@ class UserController {
       res.status(500).json({ error: error.message });
     }
   }
-
   async uploadPost(req, res) {
     try {
-      const { username, description, location } = req.body;
-      const author = await this.userService.getUser(username);
+      const {description, location, photos = [] } = req.body;
 
-      // Convert each uploaded file to base64 string
-      const photos = await Promise.all(
-        (req.files || []).map(async (file) => {
-          const fileData = await fs.readFile(file.path); // Read from disk
-          const base64 = fileData.toString("base64");
-          return `data:${file.mimetype};base64,${base64}`;
-        })
-      );
+      const author = req.user;
 
       const postData = {
         author,
@@ -95,31 +86,15 @@ class UserController {
     }
   }
 
-  async addLikeToPost(req, res) {
+  async likePost(req, res) {
     try {
-      const { postId, usernameWhoLiked } = req.body;
-      const userLiked = await this.userService.getUser(usernameWhoLiked);
-      const updatedPost = await this.userService.addLikeToPost(
-        postId,
-        userLiked
-      );
-      res
-        .status(202)
-        .json({ message: "added like successfully", updatedPost: updatedPost });
-    } catch (error) {
-      res.status(500).json({ error: error.message });
-    }
-  }
-  async deleteLikeFromPost(req, res) {
-    try {
-      const { postId, usernameWhoDisliked } = req.body;
-      const user = await this.userService.getUser(usernameWhoDisliked);
-      const updatedPost = await this.userService.deleteLikeFromPost(
-        postId,
-        user
-      );
+      console.log("bbbbbbbbbbbbbbbbbbbbbbbbbb");
+      const { postId } = req.params;
+      const userLiked = req.user;
+      const updatedPost = await this.userService.likePost(postId, userLiked);
+      console.log("addddddd");
       res.status(202).json({
-        message: "deleted like successfully",
+        message: "added/removed like successfully",
         updatedPost: updatedPost,
       });
     } catch (error) {
@@ -129,8 +104,8 @@ class UserController {
 
   async addCommentToPost(req, res) {
     try {
-      const { postId, text, responderName } = req.body;
-      const responder = this.userService.getUser(responderName);
+      const { postId, text } = req.body;
+      const responder = req.user;
       const updatedPost = await this.userService.addCommentToPost(
         postId,
         text,
@@ -185,11 +160,22 @@ class UserController {
   async addPostToUser(req, res) {
     try {
       const userId = req.user.id;
-      const { photos, description } = req.body;
-      const post = await this.userService.addPostToUser(userId, {
-        photos,
+      const { description, location } = req.body;
+
+      const photos = (req.files || []).map(
+        (file) =>
+          `data:${file.mimetype};base64,${file.buffer.toString("base64")}`
+      );
+
+      const postData = {
+        photos: photos,
         description,
-      });
+        location,
+        author: userId,
+      };
+
+      const post = await this.userService.addPostToUser(userId, postData);
+
       res.status(201).json({
         message: "Post created and added to user successfully!",
         post,
@@ -199,6 +185,7 @@ class UserController {
       res.status(500).json({ message: "Failed to add post", error });
     }
   }
+
   async getPost(req, res) {
     try {
       let { postId } = req.params;
@@ -240,7 +227,6 @@ class UserController {
       console.log({ accessToken, refreshToken });
       this.setAccessToken(res, accessToken);
       this.setRefreshTokenCookie(res, refreshToken);
-
       res.status(200).json({ message: "Login successful" });
     } catch (error) {
       console.error("Error during login:", error.message);
@@ -262,7 +248,7 @@ class UserController {
       }
 
       req.user = await this.userService.authenticateAccessToken(accessToken);
-      console.log("DONE AUTHENTICATION!");
+      console.log(`DONE AUTHENTICATION! for ${req.user.username}`);
       console.log("**********************************************");
       return next();
     } catch (err) {

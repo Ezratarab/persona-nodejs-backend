@@ -58,14 +58,23 @@ class UserService {
       throw err;
     }
   }
-  async addLikeToPost(postId, userLiked) {
+  async likePost(postId, userLiked) {
     try {
-      const updatedPost = await Post.findByIdAndUpdate(
-        postId,
-        { $addToSet: { likes: userLiked._id } },
-        { new: true }
-      );
-      return updatedPost;
+      const post = await Post.findById(postId);
+      if (!post.likes) {
+        post.likes = [];
+      }
+      const userIdStr = userLiked._id.toString();
+      const alreadyLiked = post.likes.some((id) => id.toString() === userIdStr);
+
+      if (alreadyLiked) {
+        post.likes = post.likes.filter((id) => id.toString() !== userIdStr);
+      } else {
+        post.likes.push(userLiked._id);
+      }
+
+      await post.save();
+      return post;
     } catch (error) {
       console.error("Error adding like to post:", error);
       throw error;
@@ -169,7 +178,6 @@ class UserService {
         { ignoreExpiration: true }
       );
       console.log("ADDED TOKENS TO BLACKLIST");
-      console.log("999999999999999999999999999999999999999");
       await this.addToBlacklist(decodedAccess.jti, decodedAccess.exp);
       await this.addToBlacklist(decodedRefresh.jti, decodedRefresh.exp);
       return { message: "Logged out successfully" };
@@ -240,7 +248,7 @@ class UserService {
       throw new Error(error.message || "Invalid token");
     }
   }
-
+///////////////////////////לסדר את הפונקציות שיעבדו עם הטוקן
   async refreshToken(refreshToken) {
     try {
       console.log("\nTrying to authenticate refresh token..\n");
@@ -284,24 +292,29 @@ class UserService {
 
   async getUser(username) {
     try {
-      const user = await User.findOne({ username: username }).populate({
+      const user = await User.findOne({ username }).populate({
         path: "posts",
         select: "photos",
       });
+
+      if (user?.posts) {
+        user.posts.forEach((post) => {
+          post.photos = post.photos.map((photo) => photo);
+        });
+      }
       return user;
     } catch (error) {
-      throw new Error(error.message || "Didnt found user");
+      throw new Error(error.message || "User not found");
     }
   }
+
   async getPost(postId) {
     try {
       const post = await Post.findById(postId)
         .populate("author", "username profilePhoto")
         .populate("comments.user", "username profilePhoto")
         .lean();
-      post.photos = post.photos.map(
-        (buf) => `data:image/jpeg;base64,${buf.toString("base64")}`
-      );
+      post.photos = post.photos.map((photo) => photo);
 
       return post;
     } catch (error) {
