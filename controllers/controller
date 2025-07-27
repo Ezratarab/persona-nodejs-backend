@@ -63,8 +63,8 @@ class UserController {
   }
   async uploadPost(req, res) {
     try {
-      const {description, location, photos = [] } = req.body;
-
+      const { description, location, photos = [] } = req.body;
+      console.log(photos);
       const author = req.user;
 
       const postData = {
@@ -88,11 +88,10 @@ class UserController {
 
   async likePost(req, res) {
     try {
-      console.log("bbbbbbbbbbbbbbbbbbbbbbbbbb");
       const { postId } = req.params;
       const userLiked = req.user;
       const updatedPost = await this.userService.likePost(postId, userLiked);
-      console.log("addddddd");
+      console.log("added like:)");
       res.status(202).json({
         message: "added/removed like successfully",
         updatedPost: updatedPost,
@@ -104,11 +103,13 @@ class UserController {
 
   async addCommentToPost(req, res) {
     try {
-      const { postId, text } = req.body;
+      const { postId } = req.params;
+      const { newComment } = req.body;
+      console.log(newComment);
       const responder = req.user;
       const updatedPost = await this.userService.addCommentToPost(
         postId,
-        text,
+        newComment,
         responder
       );
       res.status(201).json({
@@ -155,34 +156,6 @@ class UserController {
       console.error("Error in controller:", error);
       console.log("500 users");
       res.status(500).json({ message: "Failed to get users", error });
-    }
-  }
-  async addPostToUser(req, res) {
-    try {
-      const userId = req.user.id;
-      const { description, location } = req.body;
-
-      const photos = (req.files || []).map(
-        (file) =>
-          `data:${file.mimetype};base64,${file.buffer.toString("base64")}`
-      );
-
-      const postData = {
-        photos: photos,
-        description,
-        location,
-        author: userId,
-      };
-
-      const post = await this.userService.addPostToUser(userId, postData);
-
-      res.status(201).json({
-        message: "Post created and added to user successfully!",
-        post,
-      });
-    } catch (error) {
-      console.error("Error in controller:", error);
-      res.status(500).json({ message: "Failed to add post", error });
     }
   }
 
@@ -273,7 +246,7 @@ class UserController {
           console.log("REFRESH TOKEN FAILED:", refreshError.message);
           return res.status(403).json({
             message:
-              refreshError.message || "Refresh failed. Please log in again.",
+              refreshError.message,
           });
         }
       }
@@ -310,9 +283,8 @@ class UserController {
       const refreshToken = req.cookies.refreshToken;
       console.log("refresh: ", refreshToken);
       if (!refreshToken) {
-        throw new Error("No refresh token provided");
+        throw new Error(process.env.REFRESH_TOKEN_NOT_FOUND);
       }
-
       return await this.userService.refreshToken(refreshToken);
     } catch (error) {
       if (error.message === process.env.TOKEN_EXPIRED_ERROR) {

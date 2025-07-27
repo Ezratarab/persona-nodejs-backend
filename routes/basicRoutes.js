@@ -20,6 +20,10 @@ module.exports = function (userController) {
     "/post/:postId/like",
     userController.likePost.bind(userController)
   );
+  router.post(
+    "/post/:postId/comment",
+    userController.addCommentToPost.bind(userController)
+  );
 
   return router;
 };

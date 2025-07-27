@@ -58,6 +58,7 @@ class UserService {
       throw err;
     }
   }
+
   async likePost(postId, userLiked) {
     try {
       const post = await Post.findById(postId);
@@ -96,7 +97,7 @@ class UserService {
   }
   async addCommentToPost(postId, text, responder) {
     try {
-      const comment = { responder, text };
+      const comment = { user: responder, text: text };
       const updatedPost = await Post.findByIdAndUpdate(
         postId,
         {
@@ -248,7 +249,7 @@ class UserService {
       throw new Error(error.message || "Invalid token");
     }
   }
-///////////////////////////לסדר את הפונקציות שיעבדו עם הטוקן
+  ///////////////////////////לסדר את הפונקציות שיעבדו עם הטוקן
   async refreshToken(refreshToken) {
     try {
       console.log("\nTrying to authenticate refresh token..\n");
@@ -292,16 +293,20 @@ class UserService {
 
   async getUser(username) {
     try {
-      const user = await User.findOne({ username }).populate({
-        path: "posts",
-        select: "photos",
-      });
-
+      console.log("1");
+      const user = await User.findOne({ username })
+        .populate({
+          path: "posts",
+          select: "photos",
+        })
+        .lean();
+      console.log("2");
       if (user?.posts) {
         user.posts.forEach((post) => {
           post.photos = post.photos.map((photo) => photo);
         });
       }
+      console.log("3");
       return user;
     } catch (error) {
       throw new Error(error.message || "User not found");
@@ -313,6 +318,7 @@ class UserService {
       const post = await Post.findById(postId)
         .populate("author", "username profilePhoto")
         .populate("comments.user", "username profilePhoto")
+        .populate("likes", "username")
         .lean();
       post.photos = post.photos.map((photo) => photo);
 
